@@ -40,12 +40,7 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
         await self.bot.wait_until_red_ready()
         # Unlike most cases, we want the cache to exit before migration.
         try:
-            try:
-                await audio.initialize(self.bot, "Audio", 2711759130)
-            except Exception as e:
-                self.config = audio._config
-                self.cog_ready_event.set()
-                raise e
+            await audio.initialize(self.bot, "Audio", 2711759130)
 
             self.config = audio._config
             self.db_conn = APSWConnectionWrapper(
@@ -72,6 +67,9 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
             )
             self.player_automated_timer_task.add_done_callback(task_callback)
         except Exception as err:
+            self.config = audio._config
+            self.cog_ready_event.set()
+
             log.exception("Audio failed to start up, please report this issue.", exc_info=err)
             raise err
 
