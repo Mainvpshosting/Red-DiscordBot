@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import discord
-import lavalink
 
 from redbot.core import commands, audio
 from redbot.core.i18n import Translator
@@ -249,7 +248,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         is_alone = await self.is_requester_alone(ctx)
         is_requester = await self.is_requester(ctx, ctx.author)
         can_skip = await self._can_instaskip(ctx, ctx.author)
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         if (not ctx.author.voice or ctx.author.voice.channel != player.channel) and not can_skip:
             return await self.send_embed_msg(
                 ctx,
@@ -285,13 +284,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                     "requester": ctx.author.id,
                 }
             )
-            player.add(player.fetch("prev_requester"), track)
-            self.bot.dispatch("red_audio_track_enqueue", player.guild, track, ctx.author)
-            queue_len = len(player.queue)
-            bump_song = player.queue[-1]
-            player.queue.insert(0, bump_song)
-            player.queue.pop(queue_len)
-            await player.skip()
+            await player.play(ctx.author, track=track, bump_and_skip=True)
             description = await self.get_track_description(
                 player.current, self.local_folder_current_path
             )
@@ -316,7 +309,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
 
         if not self._player_check(ctx):
             return await self.send_embed_msg(ctx, title=_("Nothing playing."))
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         if (not ctx.author.voice or ctx.author.voice.channel != player.channel) and not can_skip:
             return await self.send_embed_msg(
                 ctx,
@@ -373,13 +366,13 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                                 num_seconds=seconds, time=self.format_time(seek)
                             ),
                         )
-                    await player.seek(seek)
+                    await player.seek(timestamp=seek)
                 else:
                     await self.send_embed_msg(
                         ctx,
                         title=_("Moved to {time}").format(time=self.format_time(seconds * 1000)),
                     )
-                    await player.seek(seconds * 1000)
+                    await player.seek(seconds=seconds * 1000)
         else:
             await self.send_embed_msg(ctx, title=_("Nothing playing."))
 
@@ -401,7 +394,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                 )
             if self._player_check(ctx):
                 await self.set_player_settings(ctx)
-                player = lavalink.get_player(ctx.guild.id)
+                player = audio.get_player(ctx.guild.id)
                 if (
                     not ctx.author.voice or ctx.author.voice.channel != player.channel
                 ) and not can_skip:
@@ -445,7 +438,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
             )
         if self._player_check(ctx):
             await self.set_player_settings(ctx)
-            player = lavalink.get_player(ctx.guild.id)
+            player = audio.get_player(ctx.guild.id)
             if (
                 not ctx.author.voice or ctx.author.voice.channel != player.channel
             ) and not can_skip:
@@ -475,7 +468,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         """Skip to the next track, or to a given track number."""
         if not self._player_check(ctx):
             return await self.send_embed_msg(ctx, title=_("Nothing playing."))
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         can_skip = await self._can_instaskip(ctx, ctx.author)
         if (not ctx.author.voice or ctx.author.voice.channel != player.channel) and not can_skip:
             return await self.send_embed_msg(
@@ -541,7 +534,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                 if vote >= percent:
                     self.skip_votes[ctx.guild.id] = set()
                     await self.send_embed_msg(ctx, title=_("Vote threshold met."))
-                    return await self._skip_action(ctx)
+                    await player.skip(ctx.author, skip_to_track)
                 else:
                     reply += _(
                         " Votes: {num_votes}/{num_members}"
@@ -554,9 +547,9 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                     )
                     return await self.send_embed_msg(ctx, title=reply)
             else:
-                return await self._skip_action(ctx, skip_to_track)
+                await player.skip(ctx.author, skip_to_track)
         else:
-            return await self._skip_action(ctx, skip_to_track)
+            await player.skip(ctx.author, skip_to_track)
 
     @commands.command(name="stop")
     @commands.guild_only()
@@ -569,7 +562,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         vote_enabled = await self.config.guild(ctx.guild).vote_enabled()
         if not self._player_check(ctx):
             return await self.send_embed_msg(ctx, title=_("Nothing playing."))
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         can_skip = await self._can_instaskip(ctx, ctx.author)
         is_alone = await self.is_requester_alone(ctx)
         if (not ctx.author.voice or ctx.author.voice.channel != player.channel) and not can_skip:
@@ -711,7 +704,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
                 embed.set_footer(text=_("Nothing playing."))
             return await self.send_embed_msg(ctx, embed=embed)
         if self._player_check(ctx):
-            player = lavalink.get_player(ctx.guild.id)
+            player = audio.get_player(ctx.guild.id)
             if (
                 not ctx.author.voice or ctx.author.voice.channel != player.channel
             ) and not can_skip:
@@ -731,7 +724,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         vol = max(0, min(vol, max_volume))
         await self.config.guild(ctx.guild).volume.set(vol)
         if self._player_check(ctx):
-            player = lavalink.get_player(ctx.guild.id)
+            player = audio.get_player(ctx.guild.id)
             await player.set_volume(vol)
             player.store("notify_channel", ctx.channel.id)
 
@@ -757,7 +750,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
             )
         if self._player_check(ctx):
             await self.set_player_settings(ctx)
-            player = lavalink.get_player(ctx.guild.id)
+            player = audio.get_player(ctx.guild.id)
             if (
                 not ctx.author.voice or ctx.author.voice.channel != player.channel
             ) and not can_skip:
@@ -794,7 +787,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         )
         if not self._player_check(ctx):
             return await self.send_embed_msg(ctx, title=_("Nothing playing."))
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         can_skip = await self._can_instaskip(ctx, ctx.author)
         if not player.queue:
             return await self.send_embed_msg(ctx, title=_("Nothing queued."))
@@ -871,7 +864,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
         )
         if not self._player_check(ctx):
             return await self.send_embed_msg(ctx, title=_("Nothing playing."))
-        player = lavalink.get_player(ctx.guild.id)
+        player = audio.get_player(ctx.guild.id)
         can_skip = await self._can_instaskip(ctx, ctx.author)
         if (not ctx.author.voice or ctx.author.voice.channel != player.channel) and not can_skip:
             return await self.send_embed_msg(

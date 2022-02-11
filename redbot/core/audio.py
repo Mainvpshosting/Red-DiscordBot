@@ -436,6 +436,7 @@ class Player:
         if not bump and not bump_and_skip:
             self.queue.append(track)
         elif bump or bump_and_skip:
+            track.extras["bumped"] = True
             self.queue.insert(0, track)
             if bump_and_skip:
                 if self.current:
@@ -890,7 +891,7 @@ class Player:
                 return
 
             elif timestamp:
-                match = (re.compile(r"(?:(\d+):)?([0-5]?[0-9]):([0-5][0-9])")).match(seconds)
+                match = (re.compile(r"(?:(\d+):)?([0-5]?[0-9]):([0-5][0-9])")).match(timestamp)
                 if match is not None:
                     hr = int(match.group(1)) if match.group(1) else 0
                     mn = int(match.group(2)) if match.group(2) else 0

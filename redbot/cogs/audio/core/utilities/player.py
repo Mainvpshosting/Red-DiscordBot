@@ -194,7 +194,6 @@ class PlayerUtilities(MixinMeta, metaclass=CompositeMetaClass):
             )
             await self.send_embed_msg(ctx, embed=embed)
         self.bot.dispatch("red_audio_skip_track", player.guild, player.current, ctx.author)
-        await player.play()
         player.queue += queue_to_append
 
     def update_player_lock(self, ctx: commands.Context, true_or_false: bool) -> None:

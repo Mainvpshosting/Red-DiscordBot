@@ -1,5 +1,5 @@
 import contextlib
-import datetime
+import lavalink
 import logging
 import math
 import time
@@ -306,11 +306,8 @@ class PlayerCommands(MixinMeta, metaclass=CompositeMetaClass):
                         "requester": ctx.author.id,
                     }
                 )
-                player.queue.insert(0, single_track)
+                await player.play(ctx.author, track=single_track, bump=True, bump_and_skip=play_now)
                 player.maybe_shuffle()
-                self.bot.dispatch(
-                    "red_audio_track_enqueue", player.guild, single_track, ctx.author
-                )
             else:
                 self.update_player_lock(ctx, False)
                 return await self.send_embed_msg(
@@ -329,9 +326,8 @@ class PlayerCommands(MixinMeta, metaclass=CompositeMetaClass):
                     "requester": ctx.author.id,
                 }
             )
-            player.queue.insert(0, single_track)
+            await player.play(ctx.author, track=single_track, bump=True, bump_and_skip=play_now)
             player.maybe_shuffle()
-            self.bot.dispatch("red_audio_track_enqueue", player.guild, single_track, ctx.author)
         description = await self.get_track_description(
             single_track, self.local_folder_current_path
         )
@@ -343,11 +339,6 @@ class PlayerCommands(MixinMeta, metaclass=CompositeMetaClass):
         await self.send_embed_msg(
             ctx, title=_("Track Enqueued"), description=description, footer=footer
         )
-
-        if not player.current:
-            await player.play()
-        elif play_now:
-            await player.skip()
 
         self.update_player_lock(ctx, False)
 
@@ -838,9 +829,6 @@ class PlayerCommands(MixinMeta, metaclass=CompositeMetaClass):
                                 }
                             )
                             await player.play(requester=ctx.author, track=track)
-                            self.bot.dispatch(
-                                "red_audio_track_enqueue", player.guild, track, ctx.author
-                            )
                     else:
                         track_len += 1
                         track.extras.update(
@@ -851,9 +839,6 @@ class PlayerCommands(MixinMeta, metaclass=CompositeMetaClass):
                             }
                         )
                         await player.play(requester=ctx.author, track=track)
-                        self.bot.dispatch(
-                            "red_audio_track_enqueue", player.guild, track, ctx.author
-                        )
 
                 player.maybe_shuffle(0 if empty_queue else 1)
                 if len(tracks) > track_len:
