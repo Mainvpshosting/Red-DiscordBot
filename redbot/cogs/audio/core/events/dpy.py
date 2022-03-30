@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import logging
 import re
 
 from collections import OrderedDict
@@ -9,21 +8,22 @@ from typing import Final, Pattern
 
 import discord
 import lavalink
+from red_commons.logging import getLogger
 
 from aiohttp import ClientConnectorError
 from discord.ext.commands import CheckFailure
-from redbot.core import commands
+
+from redbot.core import commands, audio
 from redbot.core.i18n import Translator
+from redbot.core.utils._internal_utils import can_send_messages_in
 from redbot.core.utils.chat_formatting import box, humanize_list
 
-from ...audio_logging import debug_exc_log
 from ...errors import TrackEnqueueError
 from ..abc import MixinMeta
 from ..cog_utils import HUMANIZED_PERM, CompositeMetaClass
+from ...utils import task_callback_trace
 
-from redbot.core import audio
-
-log = logging.getLogger("red.cogs.Audio.cog.Events.dpy")
+log = getLogger("red.cogs.Audio.cog.Events.dpy")
 _ = Translator("Audio", Path(__file__))
 RE_CONVERSION: Final[Pattern] = re.compile('Converting to "(.*)" failed for parameter "(.*)".')
 
@@ -55,6 +55,24 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
             or await ctx.bot.is_admin(ctx.author)
         )
         guild = ctx.guild
+        if guild and not can_send_messages_in(ctx.channel, ctx.me):
+            log.debug(
+                "Missing perms to send messages in %d, Owner ID: %d",
+                ctx.guild.id,
+                ctx.guild.owner.id,
+            )
+            if not surpass_ignore:
+                text = _(
+                    "I'm missing permissions to send messages in this server. "
+                    "Please address this as soon as possible."
+                )
+                log.info(
+                    "Missing write permission in %d, Owner ID: %d",
+                    ctx.guild.id,
+                    ctx.guild.owner.id,
+                )
+                raise CheckFailure(message=text)
+
         if guild and not current_perms.is_superset(self.permission_cache):
             current_perms_set = set(iter(current_perms))
             expected_perms_set = set(iter(self.permission_cache))
@@ -147,7 +165,7 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
             )
             if error.send_cmd_help:
                 await ctx.send_help()
-        elif isinstance(error, commands.ConversionFailure):
+        elif isinstance(error, commands.BadArgument):
             handled = True
             if error.args:
                 if match := RE_CONVERSION.search(error.args[0]):
@@ -178,7 +196,7 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
                 description=_("Connection to Lavalink has been lost."),
                 error=True,
             )
-            debug_exc_log(log, error, "This is a handled error")
+            log.trace("This is a handled error", exc_info=error)
         elif isinstance(error, KeyError) and "such player for that guild" in str(error):
             handled = True
             await self.send_embed_msg(
@@ -187,7 +205,7 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
                 description=_("The bot is not connected to a voice channel."),
                 error=True,
             )
-            debug_exc_log(log, error, "This is a handled error")
+            log.trace("This is a handled error", exc_info=error)
         elif isinstance(error, (TrackEnqueueError, asyncio.exceptions.TimeoutError)):
             handled = True
             await self.send_embed_msg(
@@ -199,7 +217,7 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
                 ),
                 error=True,
             )
-            debug_exc_log(log, error, "This is a handled error")
+            log.trace("This is a handled error", exc_info=error)
         elif isinstance(error, discord.errors.HTTPException):
             handled = True
             await self.send_embed_msg(
@@ -227,19 +245,16 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
         if not handled:
             await self.bot.on_command_error(ctx, error, unhandled_by_cog=True)
 
-    async def test_unload(self):
+    async def cog_unload(self) -> None:
         if not self.cog_cleaned_up:
             self.bot.dispatch("red_audio_unload", self)
-            self.session.detach()
-            self.bot.loop.create_task(self._close_database())
+            await self.session.close()
+            await self._close_database()
             if self.player_automated_timer_task:
                 self.player_automated_timer_task.cancel()
 
             if self.lavalink_connect_task:
                 self.lavalink_connect_task.cancel()
-
-            # while not self.lavalink_connect_task.done():
-            #     await asyncio.sleep(0.1)
 
             if self.cog_init_task:
                 self.cog_init_task.cancel()
@@ -248,30 +263,8 @@ class DpyEvents(MixinMeta, metaclass=CompositeMetaClass):
                 self._restore_task.cancel()
 
             await audio.shutdown("Audio", 2711759130)
-            # lavalink.unregister_event_listener(audio.Lavalink.lavalink_event_handler)
             lavalink.unregister_update_listener(self.lavalink_update_handler)
-
             self.cog_cleaned_up = True
-
-    def cog_unload(self) -> None:
-        if not self.cog_cleaned_up:
-            self.bot.dispatch("red_audio_unload", self)
-            self.session.detach()
-            self.bot.loop.create_task(self._close_database())
-            if self.player_automated_timer_task:
-                self.player_automated_timer_task.cancel()
-
-            if self.lavalink_connect_task:
-                self.lavalink_connect_task.cancel()
-
-            if self.cog_init_task:
-                self.cog_init_task.cancel()
-
-            if self._restore_task:
-                self._restore_task.cancel()
-
-            self.bot.loop.create_task(audio.shutdown("Audio", 2711759130))
-            lavalink.unregister_update_listener(self.lavalink_update_handler)
 
     @commands.Cog.listener()
     async def on_voice_state_update(

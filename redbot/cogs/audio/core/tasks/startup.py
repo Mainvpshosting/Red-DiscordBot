@@ -1,13 +1,13 @@
 import asyncio
-import datetime
 import itertools
-import logging
 from pathlib import Path
 
 from typing import Optional
 
 import lavalink
+from red_commons.logging import getLogger
 
+from redbot.core import audio
 from redbot.core.data_manager import cog_data_path
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
@@ -15,15 +15,12 @@ from redbot.core.utils.dbtools import APSWConnectionWrapper
 
 from ...apis.interface import AudioAPIInterface
 from ...apis.playlist_wrapper import PlaylistWrapper
-from ...audio_logging import debug_exc_log
 from ...errors import DatabaseError, TrackEnqueueError
-from ...utils import task_callback
+from ...utils import task_callback_debug
 from ..abc import MixinMeta
 from ..cog_utils import _SCHEMA_VERSION, CompositeMetaClass
 
-from redbot.core import audio
-
-log = logging.getLogger("red.cogs.Audio.cog.Tasks.startup")
+log = getLogger("red.cogs.Audio.cog.Tasks.startup")
 _ = Translator("Audio", Path(__file__))
 
 
@@ -33,8 +30,8 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
         # If it waits for ready in startup, we cause a deadlock during initial load
         # as initial load happens before the bot can ever be ready.
         lavalink.set_logging_level(self.bot._cli_flags.logging_level)
-        self.cog_init_task = self.bot.loop.create_task(self.initialize())
-        self.cog_init_task.add_done_callback(task_callback)
+        self.cog_init_task = asyncio.create_task(self.initialize())
+        self.cog_init_task.add_done_callback(task_callback_debug)
 
     async def initialize(self) -> None:
         await self.bot.wait_until_red_ready()
@@ -62,27 +59,24 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
 
             await self.restore_players()
 
-            self.player_automated_timer_task = self.bot.loop.create_task(
-                self.player_automated_timer()
-            )
-            self.player_automated_timer_task.add_done_callback(task_callback)
-        except Exception as err:
+            self.player_automated_timer_task = asyncio.create_task(self.player_automated_timer())
+            self.player_automated_timer_task.add_done_callback(task_callback_debug)
+        except Exception as exc:
+            log.critical("Audio failed to start up, please report this issue.", exc_info=exc)
             self.config = audio._config
             self.cog_ready_event.set()
-
-            log.exception("Audio failed to start up, please report this issue.", exc_info=err)
-            raise err
+            return
 
         self.cog_ready_event.set()
 
     async def restore_players(self):
         tries = 0
         tracks_to_restore = await self.api_interface.persistent_queue_api.fetch_all()
-        while not lavalink.node._nodes:
+        while not lavalink.get_all_nodes():
             await asyncio.sleep(1)
             tries += 1
             if tries > 60:
-                log.exception("Unable to restore players, couldn't connect to Lavalink.")
+                log.warning("Unable to restore players, couldn't connect to Lavalink.")
                 return
         metadata = {}
         all_guilds = await self.config.all_guilds()
@@ -141,8 +135,8 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
                             tries += 1
                         except Exception as exc:
                             tries += 1
-                            debug_exc_log(
-                                log, exc, "Failed to restore music voice channel %s", vc_id
+                            log.debug(
+                                "Failed to restore music voice channel %s", vc_id, exc_info=exc
                             )
                             if vc is None:
                                 break
@@ -165,10 +159,11 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
                         track=track,
                     )
                 player.maybe_shuffle()
-
+                if not player.is_playing:
+                    await player.play()
                 log.info("Restored %r", player)
-            except Exception as err:
-                debug_exc_log(log, err, "Error restoring player in %d", guild_id)
+            except Exception as exc:
+                log.debug("Error restoring player in %d", guild_id, exc_info=exc)
                 await self.api_interface.persistent_queue_api.drop(guild_id)
 
         for guild_id, (notify_channel_id, vc_id) in metadata.items():
@@ -207,7 +202,7 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
                         tries += 1
                     except Exception as exc:
                         tries += 1
-                        debug_exc_log(log, exc, "Failed to restore music voice channel %s", vc_id)
+                        log.debug("Failed to restore music voice channel %s", vc_id, exc_info=exc)
                         if vc is None:
                             break
                         else:
@@ -221,7 +216,7 @@ class StartUpTasks(MixinMeta, metaclass=CompositeMetaClass):
                 if player.volume != volume:
                     await player.set_volume(volume)
                 player.maybe_shuffle()
-                log.info("Restored %r", player)
+                log.debug("Restored %r", player)
                 if not player.is_playing:
                     notify_channel = player.fetch("notify_channel")
                     try:

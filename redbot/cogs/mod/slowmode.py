@@ -2,6 +2,7 @@ import re
 from .abc import MixinMeta
 from datetime import timedelta
 from redbot.core import commands, i18n, checks
+from redbot.core.utils._internal_utils import bot_can_manage_channel, user_can_manage_channel
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 _ = i18n.Translator("Mod", __file__)
@@ -14,8 +15,8 @@ class Slowmode(MixinMeta):
 
     @commands.command()
     @commands.guild_only()
-    @commands.bot_has_permissions(manage_channels=True)
-    @checks.admin_or_permissions(manage_channels=True)
+    @bot_can_manage_channel()
+    @user_can_manage_channel(commands.PrivilegeLevel.ADMIN)
     async def slowmode(
         self,
         ctx,
@@ -24,7 +25,7 @@ class Slowmode(MixinMeta):
             minimum=timedelta(seconds=0), maximum=timedelta(hours=6), default_unit="seconds"
         ) = timedelta(seconds=0),
     ):
-        """Changes channel's slowmode setting.
+        """Changes thread's or channel's slowmode setting.
 
         Interval can be anything from 0 seconds to 6 hours.
         Use without parameters to disable.

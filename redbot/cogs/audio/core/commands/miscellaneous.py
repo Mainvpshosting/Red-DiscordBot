@@ -1,23 +1,24 @@
 import datetime
 import heapq
-import logging
 import math
 import random
 from pathlib import Path
 
 import discord
 import lavalink
+from red_commons.logging import getLogger
 
 from redbot.core import commands
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
+from redbot.core.utils._internal_utils import bot_can_react
 from redbot.core.utils.chat_formatting import humanize_number, pagify
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Commands.miscellaneous")
+log = getLogger("red.cogs.Audio.cog.Commands.miscellaneous")
 _ = Translator("Audio", Path(__file__))
 
 
@@ -41,7 +42,8 @@ class MiscellaneousCommands(MixinMeta, metaclass=CompositeMetaClass):
     @commands.command(name="audiostats")
     @commands.guild_only()
     @commands.is_owner()
-    @commands.bot_has_permissions(embed_links=True, add_reactions=True)
+    @commands.bot_has_permissions(embed_links=True)
+    @bot_can_react()
     async def command_audiostats(self, ctx: commands.Context):
         """Audio stats."""
         server_num = len(lavalink.active_players())

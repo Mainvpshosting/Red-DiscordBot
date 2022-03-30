@@ -32,12 +32,16 @@ from typing import (
 import aiohttp
 import discord
 import pkg_resources
+from discord.ext import commands as dpy_commands
+from discord.ext.commands.converter import get_converter  # DEP-WARN
 from fuzzywuzzy import fuzz, process
 from rich.progress import ProgressColumn
 from rich.progress_bar import ProgressBar
+from red_commons.logging import VERBOSE, TRACE
 
 from redbot import VersionInfo
 from redbot.core import data_manager
+from redbot.core import commands
 from redbot.core.utils.chat_formatting import box
 
 if TYPE_CHECKING:
@@ -57,6 +61,14 @@ __all__ = (
     "fetch_latest_red_version_info",
     "deprecated_removed",
     "RichIndefiniteBarColumn",
+    "cli_level_to_log_level",
+    "get_converter",
+    "can_send_messages_in",
+    "can_manage_channel_in",
+    "can_react_in",
+    "bot_can_react",
+    "bot_can_manage_channel",
+    "user_can_manage_channel",
 )
 
 _T = TypeVar("_T")
@@ -357,3 +369,118 @@ class RichIndefiniteBarColumn(ProgressColumn):
             total=task.total,
             completed=task.completed,
         )
+
+
+def cli_level_to_log_level(level: int) -> int:
+    if level == 0:
+        log_level = logging.INFO
+    elif level == 1:
+        log_level = logging.DEBUG
+    elif level == 2:
+        log_level = VERBOSE
+    else:
+        log_level = TRACE
+    return log_level
+
+
+# The utility functions below serve as a temporary solution.
+# We should expose these as public utilities once we improve them.
+
+
+def can_send_messages_in(messageable: discord.abc.Messageable, obj: discord.Member, /) -> bool:
+    channel = messageable.channel if isinstance(messageable, dpy_commands.Context) else messageable
+    if isinstance(channel, discord.PartialMessageable):
+        # If we have a partial messageable, we sadly can't do much...
+        raise TypeError("Can't check permissions for PartialMessageable.")
+
+    perms = channel.permissions_for(obj)
+    if isinstance(channel, discord.Thread):
+        return (
+            perms.send_messages_in_threads
+            and (not channel.locked or perms.manage_threads)
+            # Unnecessary because the bot clearly *sees* the thread?
+            #
+            # and (not channel.is_private() or channel.me is not None or perms.manage_threads)
+        )
+
+    return perms.send_messages
+
+
+def can_manage_channel_in(
+    channel: Union[discord.abc.GuildChannel, discord.Thread],
+    obj: discord.Member,
+    /,
+    allow_thread_owner: bool = False,
+) -> bool:
+    perms = channel.permissions_for(obj)
+    if isinstance(channel, discord.Thread):
+        return perms.manage_threads or (allow_thread_owner and channel.owner_id == obj.id)
+
+    return perms.manage_channels
+
+
+def can_react_in(messageable: discord.abc.Messageable, obj: discord.Member, /) -> bool:
+    channel = messageable.channel if isinstance(messageable, dpy_commands.Context) else messageable
+    if isinstance(channel, discord.PartialMessageable):
+        # If we have a partial messageable, we sadly can't do much...
+        raise TypeError("Can't check permissions for PartialMessageable.")
+
+    perms = channel.permissions_for(obj)
+    if isinstance(channel, discord.Thread):
+        return (
+            (perms.read_message_history and perms.add_reactions)
+            and not channel.archived
+            # Unnecessary because the bot clearly *sees* the thread?
+            #
+            # and (not channel.is_private() or channel.me is not None or perms.manage_threads)
+        )
+
+    return perms.read_message_history and perms.add_reactions
+
+
+# TODO: type hint these
+def bot_can_manage_channel(*, allow_thread_owner: bool = False):
+    def predicate(ctx: commands.Context) -> bool:
+        if ctx.guild is None:
+            return False
+
+        if not can_manage_channel_in(ctx.channel, ctx.me, allow_thread_owner=allow_thread_owner):
+            if isinstance(ctx.channel, discord.Thread):
+                # This is a slight lie - thread owner *might* also be allowed
+                # but we just say that bot is missing the Manage Threads permission.
+                missing = discord.Permissions(manage_threads=True)
+            else:
+                missing = discord.Permissions(manage_channels=True)
+            raise commands.BotMissingPermissions(missing=missing)
+
+        return True
+
+    return commands.check(predicate)
+
+
+def user_can_manage_channel(
+    privilege_level: Optional[commands.PrivilegeLevel] = None, *, allow_thread_owner: bool = False
+):
+    async def predicate(ctx: commands.Context) -> bool:
+        if can_manage_channel_in(ctx.channel, ctx.author, allow_thread_owner=allow_thread_owner):
+            return True
+
+        if privilege_level is not None:
+            if await commands.PrivilegeLevel.from_ctx(ctx) >= privilege_level:
+                return True
+
+        return False
+
+    return commands.permissions_check(predicate)
+
+
+def bot_can_react():
+    async def predicate(ctx: commands.Context) -> bool:
+        return not (isinstance(ctx.channel, discord.Thread) and ctx.channel.archived)
+
+    def decorator(func):
+        func = commands.bot_has_permissions(read_message_history=True, add_reactions=True)(func)
+        func = commands.check(predicate)(func)
+        return func
+
+    return decorator

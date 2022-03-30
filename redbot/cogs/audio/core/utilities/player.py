@@ -1,4 +1,3 @@
-import logging
 import time
 from pathlib import Path
 
@@ -7,21 +6,20 @@ from typing import List, Optional, Tuple, Union
 import aiohttp
 import discord
 import lavalink
+from red_commons.logging import getLogger
 
-from discord.embeds import EmptyEmbed
 from redbot.core import commands, audio
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
 from redbot.core.utils.chat_formatting import bold, escape
 
 from ...audio_dataclasses import _PARTIALLY_SUPPORTED_MUSIC_EXT, Query
-from ...audio_logging import IS_DEBUG, debug_exc_log
 from ...errors import QueryUnauthorized, SpotifyFetchError, TrackEnqueueError
 from ...utils import Notifier
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Utilities.player")
+log = getLogger("red.cogs.Audio.cog.Utilities.player")
 _ = Translator("Audio", Path(__file__))
 
 
@@ -122,8 +120,8 @@ class PlayerUtilities(MixinMeta, metaclass=CompositeMetaClass):
             player = audio.get_player(ctx.guild.id)
             log.debug("Current requester is %s", player.current.requester)
             return player.current.requester.id == member.id
-        except Exception as err:
-            debug_exc_log(log, err, "Caught error in `is_requester`")
+        except Exception as exc:
+            log.trace("Caught error in `is_requester`", exc_info=exc)
         return False
 
     async def _skip_action(self, ctx: commands.Context, skip_to_track: int = None) -> None:
@@ -447,8 +445,7 @@ class PlayerUtilities(MixinMeta, metaclass=CompositeMetaClass):
                     f"{track.title} {track.author} {track.uri} " f"{str(query)}",
                     query_obj=query,
                 ):
-                    if IS_DEBUG:
-                        log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
+                    log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
                     continue
                 elif guild_data["maxlength"] > 0:
                     if self.is_track_length_allowed(track, guild_data["maxlength"]):
@@ -522,8 +519,7 @@ class PlayerUtilities(MixinMeta, metaclass=CompositeMetaClass):
                     ),
                     query_obj=query,
                 ):
-                    if IS_DEBUG:
-                        log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
+                    log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
                     self.update_player_lock(ctx, False)
                     return await self.send_embed_msg(
                         ctx, title=_("This track is not allowed in this server.")
@@ -553,7 +549,7 @@ class PlayerUtilities(MixinMeta, metaclass=CompositeMetaClass):
             except IndexError:
                 self.update_player_lock(ctx, False)
                 title = _("Nothing found")
-                desc = EmptyEmbed
+                desc = None
                 if await self.bot.is_owner(ctx.author):
                     desc = _("Please check your console or logs for details.")
                 return await self.send_embed_msg(ctx, title=title, description=desc)

@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import logging
 import time
 import contextlib
 from pathlib import Path
@@ -9,18 +8,18 @@ from typing import Optional
 
 import discord
 import lavalink
+from red_commons.logging import getLogger
 
 from redbot.core import commands, audio
 from redbot.core.audio_utils.errors import DatabaseError, TrackEnqueueError, NotConnectedToVoice
 from redbot.core.i18n import Translator
 
 from ...apis.playlist_interface import Playlist, delete_playlist, get_playlist
-from ...audio_logging import debug_exc_log
 from ...utils import PlaylistScope
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Events.audio")
+log = getLogger("red.cogs.Audio.cog.Events.audio")
 _ = Translator("Audio", Path(__file__))
 
 
@@ -187,8 +186,8 @@ class AudioEvents(MixinMeta, metaclass=CompositeMetaClass):
                     playlist_api=self.playlist_api,
                     bot=self.bot,
                 )
-            except Exception as err:
-                debug_exc_log(log, err, "Failed to delete daily playlist ID: %d", too_old_id)
+            except Exception as exc:
+                log.verbose("Failed to delete daily playlist ID: %d", too_old_id, exc_info=exc)
             try:
                 await delete_playlist(
                     scope=PlaylistScope.GLOBAL.value,
@@ -198,9 +197,9 @@ class AudioEvents(MixinMeta, metaclass=CompositeMetaClass):
                     playlist_api=self.playlist_api,
                     bot=self.bot,
                 )
-            except Exception as err:
-                debug_exc_log(
-                    log, err, "Failed to delete global daily playlist ID: %d", too_old_id
+            except Exception as exc:
+                log.verbose(
+                    "Failed to delete global daily playlist ID: %d", too_old_id, exc_info=exc
                 )
         persist_cache = self._persist_queue_cache.setdefault(guild.id, guild_data["persist_queue"])
         if persist_cache:
@@ -327,7 +326,7 @@ class AudioEvents(MixinMeta, metaclass=CompositeMetaClass):
 
         if notify_channel and has_perms and not player.fetch("autoplay_notified", False):
             if (
-                len(player.manager.players) < 10
+                len(player.node.players) < 10
                 or not player._last_resume
                 and player._last_resume + datetime.timedelta(seconds=60)
                 > datetime.datetime.now(tz=datetime.timezone.utc)

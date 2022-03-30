@@ -1,4 +1,7 @@
-#!/usr/bin/env python
+from redbot import _early_init
+
+# this needs to be called as early as possible
+_early_init()
 
 import asyncio
 import functools
@@ -20,14 +23,8 @@ from typing import NoReturn
 import discord
 import rich
 
-# Set the event loop policies here so any subsequent `new_event_loop()`
-# calls, in particular those as a result of the following imports,
-# return the correct loop object.
-from redbot import _early_init, __version__
-
-_early_init()
-
 import redbot.logging
+from redbot import __version__
 from redbot.core import audio
 from redbot.core.bot import Red, ExitCodes, _NoOwnerSet
 from redbot.core.cli import interactive_config, confirm, parse_cli_flags
@@ -382,10 +379,10 @@ async def run_bot(red: Red, cli_flags: Namespace) -> None:
             sys.exit(1)
 
     if cli_flags.dry_run:
-        await red.http.close()
         sys.exit(0)
     try:
-        await red.start(token, bot=True)
+        # `async with red:` is unnecessary here because we call red.close() in shutdown handler
+        await red.start(token)
     except discord.LoginFailure:
         log.critical("This token doesn't seem to be valid.")
         db_token = await red._config.token()
@@ -442,7 +439,6 @@ def handle_early_exit_flags(cli_flags: Namespace):
 
 async def shutdown_handler(red, signal_type=None, exit_code=None):
     if signal_type:
-        await audio.shutdown("", 0, force_shutdown=True)
         log.info("%s received. Quitting...", signal_type)
         # Do not collapse the below line into other logic
         # We need to renter this function
@@ -456,7 +452,8 @@ async def shutdown_handler(red, signal_type=None, exit_code=None):
         red._shutdown_mode = exit_code
 
     try:
-        await red.close()
+        if not red.is_closed():
+            await red.close()
     finally:
         # Then cancels all outstanding tasks other than ourselves
         pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -498,7 +495,7 @@ def red_exception_handler(red, red_task: asyncio.Future):
     except Exception as exc:
         log.critical("The main bot task didn't handle an exception and has crashed", exc_info=exc)
         log.warning("Attempting to die as gracefully as possible...")
-        red.loop.create_task(shutdown_handler(red))
+        asyncio.create_task(shutdown_handler(red))
 
 
 def main():

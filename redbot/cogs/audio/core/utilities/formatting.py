@@ -1,6 +1,3 @@
-import audioop
-import datetime
-import logging
 import math
 import re
 import time
@@ -9,19 +6,19 @@ from pathlib import Path
 from typing import List, Optional
 
 import discord
+import lavalink
+from red_commons.logging import getLogger
 
-from discord.embeds import EmptyEmbed
-from redbot.core import commands, audio
+from redbot.core import commands
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
 from redbot.core.utils.chat_formatting import box, escape
 
 from ...audio_dataclasses import LocalPath, Query
-from ...audio_logging import IS_DEBUG
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Utilities.formatting")
+log = getLogger("red.cogs.Audio.cog.Utilities.formatting")
 _ = Translator("Audio", Path(__file__))
 RE_SQUARE = re.compile(r"[\[\]]")
 
@@ -94,7 +91,7 @@ class FormattingUtilities(MixinMeta, metaclass=CompositeMetaClass):
         if not self._player_check(ctx):
             if self.lavalink_connection_aborted:
                 msg = _("Connection to Lavalink has failed")
-                description = EmptyEmbed
+                description = None
                 if await self.bot.is_owner(ctx.author):
                     description = _("Please check your console or logs for details.")
                 return await self.send_embed_msg(ctx, title=msg, description=description)
@@ -164,14 +161,12 @@ class FormattingUtilities(MixinMeta, metaclass=CompositeMetaClass):
             f"{search_choice.title} {search_choice.author} {search_choice.uri} {str(query)}",
             query_obj=query,
         ):
-            if IS_DEBUG:
-                log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
+            log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
             self.update_player_lock(ctx, False)
             return await self.send_embed_msg(
                 ctx, title=_("This track is not allowed in this server.")
             )
         elif guild_data["maxlength"] > 0:
-
             if self.is_track_length_allowed(search_choice, guild_data["maxlength"]):
                 search_choice.extras.update(
                     {

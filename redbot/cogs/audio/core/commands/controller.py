@@ -1,17 +1,17 @@
 import asyncio
 import contextlib
-import datetime
-import logging
 import time
 from pathlib import Path
 
 from typing import Optional, Union
 
 import discord
+from red_commons.logging import getLogger
 
 from redbot.core import commands, audio
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
+from redbot.core.utils._internal_utils import bot_can_react
 from redbot.core.utils.chat_formatting import humanize_number
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
@@ -19,7 +19,7 @@ from redbot.core.utils.predicates import ReactionPredicate
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Commands.player_controller")
+log = getLogger("red.cogs.Audio.cog.Commands.player_controller")
 _ = Translator("Audio", Path(__file__))
 
 
@@ -80,7 +80,8 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
 
     @commands.command(name="now")
     @commands.guild_only()
-    @commands.bot_has_permissions(embed_links=True, add_reactions=True)
+    @commands.bot_has_permissions(embed_links=True)
+    @bot_can_react()
     async def command_now(self, ctx: commands.Context):
         """Now playing."""
         if not self._player_check(ctx):
@@ -295,7 +296,7 @@ class PlayerControllerCommands(MixinMeta, metaclass=CompositeMetaClass):
     @commands.guild_only()
     @commands.bot_has_permissions(embed_links=True)
     async def command_seek(self, ctx: commands.Context, seconds: Union[int, str]):
-        """Seek ahead or behind on a track by seconds or a to a specific time.
+        """Seek ahead or behind on a track by seconds or to a specific time.
 
         Accepts seconds or a value formatted like 00:00:00 (`hh:mm:ss`) or 00:00 (`mm:ss`).
         """

@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import datetime
 import json
-import logging
 import random
 import time
 
@@ -13,6 +12,7 @@ from typing import TYPE_CHECKING, Callable, List, MutableMapping, Optional, Tupl
 import aiohttp
 import discord
 import lavalink
+from red_commons.logging import getLogger
 
 from lavalink.rest_api import LoadResult, LoadType
 from redbot.core import Config, commands, audio
@@ -23,7 +23,6 @@ from redbot.core.utils import AsyncIter
 from redbot.core.utils.dbtools import APSWConnectionWrapper
 
 from ..audio_dataclasses import Query
-from ..audio_logging import IS_DEBUG, debug_exc_log
 from ..errors import DatabaseError, SpotifyFetchError, TrackEnqueueError, YouTubeApiError
 from ..utils import CacheLevel, Notifier
 from .api_utils import LavalinkCacheFetchForGlobalResult
@@ -39,7 +38,7 @@ if TYPE_CHECKING:
     from .. import Audio
 
 _ = Translator("Audio", Path(__file__))
-log = logging.getLogger("red.cogs.Audio.api.AudioAPIInterface")
+log = getLogger("red.cogs.Audio.api.AudioAPIInterface")
 _TOP_100_US = "https://www.youtube.com/playlist?list=PL4fGSI1pDJn5rWitrRWFKdm-ulaFiIyoK"
 # TODO: Get random from global Cache
 
@@ -109,88 +108,6 @@ class AudioAPIInterface:
 
         return track
 
-    # async def route_tasks(
-    #     self,
-    #     action_type: str = None,
-    #     data: Union[List[MutableMapping], MutableMapping] = None,
-    # ) -> None:
-    #     """Separate the tasks and run them in the appropriate functions."""
-    #
-    #     if not data:
-    #         return
-    #     if action_type == "insert" and isinstance(data, list):
-    #         for table, d in data:
-    #             if table == "lavalink":
-    #                 await self.local_cache_api.lavalink.insert(d)
-    #             elif table == "youtube":
-    #                 await self.local_cache_api.youtube.insert(d)
-    #             elif table == "spotify":
-    #                 await self.local_cache_api.spotify.insert(d)
-    #     elif action_type == "update" and isinstance(data, dict):
-    #         for table, d in data:
-    #             if table == "lavalink":
-    #                 await self.local_cache_api.lavalink.update(data)
-    #             elif table == "youtube":
-    #                 await self.local_cache_api.youtube.update(data)
-    #             elif table == "spotify":
-    #                 await self.local_cache_api.spotify.update(data)
-    #     elif action_type == "global" and isinstance(data, list):
-    #         await asyncio.gather(*[self.global_cache_api.update_global(**d) for d in data])
-    #
-    # async def run_tasks(self, ctx: Optional[commands.Context] = None, message_id=None) -> None:
-    #     """Run tasks for a specific context."""
-    #     if message_id is not None:
-    #         lock_id = message_id
-    #     elif ctx is not None:
-    #         lock_id = ctx.message.id
-    #     else:
-    #         return
-    #     lock_author = ctx.author if ctx else None
-    #     async with self._lock:
-    #         if lock_id in self._tasks:
-    #             if IS_DEBUG:
-    #                 log.debug("Running database writes for %d (%s)", lock_id, lock_author)
-    #             try:
-    #                 tasks = self._tasks[lock_id]
-    #                 tasks = [self.route_tasks(a, tasks[a]) for a in tasks]
-    #                 await asyncio.gather(*tasks, return_exceptions=False)
-    #                 del self._tasks[lock_id]
-    #             except Exception as exc:
-    #                 debug_exc_log(
-    #                     log, exc, "Failed database writes for %d (%s)", lock_id, lock_author
-    #                 )
-    #             else:
-    #                 if IS_DEBUG:
-    #                     log.debug("Completed database writes for %d (%s)", lock_id, lock_author)
-    #
-    # async def run_all_pending_tasks(self) -> None:
-    #     """Run all pending tasks left in the cache, called on cog_unload."""
-    #     async with self._lock:
-    #         if IS_DEBUG:
-    #             log.debug("Running pending writes to database")
-    #         try:
-    #             tasks: MutableMapping = {"update": [], "insert": [], "global": []}
-    #             async for k, task in AsyncIter(self._tasks.items()):
-    #                 async for t, args in AsyncIter(task.items()):
-    #                     tasks[t].append(args)
-    #             self._tasks = {}
-    #             coro_tasks = [self.route_tasks(a, tasks[a]) for a in tasks]
-    #
-    #             await asyncio.gather(*coro_tasks, return_exceptions=False)
-    #
-    #         except Exception as exc:
-    #             debug_exc_log(log, exc, "Failed database writes")
-    #         else:
-    #             if IS_DEBUG:
-    #                 log.debug("Completed pending writes to database have finished")
-    #
-    # def append_task(self, ctx: commands.Context, event: str, task: Tuple, _id: int = None) -> None:
-    #     """Add a task to the cache to be run later."""
-    #     lock_id = _id or ctx.message.id
-    #     if lock_id not in self._tasks:
-    #         self._tasks[lock_id] = {"update": [], "insert": [], "global": []}
-    #     self._tasks[lock_id][event].append(task)
-
     async def fetch_spotify_query(
         self,
         ctx: commands.Context,
@@ -248,8 +165,8 @@ class AudioAPIInterface:
                             {"track": track_info}
                         )
                     except Exception as exc:
-                        debug_exc_log(
-                            log, exc, "Failed to fetch %r from YouTube table", track_info
+                        log.verbose(
+                            "Failed to fetch %r from YouTube table", track_info, exc_info=exc
                         )
 
                 if val is None:
@@ -257,9 +174,9 @@ class AudioAPIInterface:
                         val = await self.fetch_youtube_query(
                             ctx, track_info, current_cache_level=current_cache_level
                         )
-                    except YouTubeApiError as err:
+                    except YouTubeApiError as exc:
                         val = None
-                        youtube_api_error = err.message
+                        youtube_api_error = exc.message
                 if youtube_cache and val:
                     task = ("update", ("youtube", {"track": track_info}))
                     audio._api_interface._append_task(ctx.author.id, *task)
@@ -387,8 +304,8 @@ class AudioAPIInterface:
                     {"uri": f"spotify:track:{uri}"}
                 )
             except Exception as exc:
-                debug_exc_log(
-                    log, exc, "Failed to fetch 'spotify:track:%s' from Spotify table", uri
+                log.verbose(
+                    "Failed to fetch 'spotify:track:%s' from Spotify table", uri, exc_info=exc
                 )
                 val = None
         else:
@@ -515,8 +432,8 @@ class AudioAPIInterface:
                             {"track": track_info}
                         )
                     except Exception as exc:
-                        debug_exc_log(
-                            log, exc, "Failed to fetch %r from YouTube table", track_info
+                        log.verbose(
+                            "Failed to fetch %r from YouTube table", track_info, exc_info=exc
                         )
                 should_query_global = globaldb_toggle and query_global and val is None
                 if should_query_global:
@@ -531,9 +448,9 @@ class AudioAPIInterface:
                         val = await self.fetch_youtube_query(
                             ctx, track_info, current_cache_level=current_cache_level
                         )
-                    except YouTubeApiError as err:
+                    except YouTubeApiError as exc:
                         val = None
-                        youtube_api_error = err.message
+                        youtube_api_error = exc.message
                         skip_youtube_api = True
                 if not youtube_api_error:
                     if youtube_cache and val and llresponse is None:
@@ -624,8 +541,7 @@ class AudioAPIInterface:
                     query_obj=query,
                 ):
                     has_not_allowed = True
-                    if IS_DEBUG:
-                        log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
+                    log.debug("Query is not allowed in %r (%d)", ctx.guild.name, ctx.guild.id)
                     continue
                 track_list.append(single_track)
                 if enqueue:
@@ -752,13 +668,13 @@ class AudioAPIInterface:
             try:
                 (val, update) = await self.local_cache_api.youtube.fetch_one({"track": track_info})
             except Exception as exc:
-                debug_exc_log(log, exc, "Failed to fetch %r from YouTube table", track_info)
+                log.verbose("Failed to fetch %r from YouTube table", track_info, exc_info=exc)
         if val is None:
             try:
                 youtube_url = await self.fetch_youtube_query(
                     ctx, track_info, current_cache_level=current_cache_level
                 )
-            except YouTubeApiError as err:
+            except YouTubeApiError:
                 youtube_url = None
         else:
             if cache_enabled:
@@ -817,11 +733,10 @@ class AudioAPIInterface:
                     {"query": query_string}
                 )
             except Exception as exc:
-                debug_exc_log(log, exc, "Failed to fetch %r from Lavalink table", query_string)
+                log.verbose("Failed to fetch %r from Lavalink table", query_string, exc_info=exc)
 
             if val and isinstance(val, dict):
-                if IS_DEBUG:
-                    log.debug("Updating Local Database with %r", query_string)
+                log.trace("Updating Local Database with %r", query_string)
                 task = ("update", ("lavalink", {"query": query_string}))
                 audio._api_interface._append_task(ctx.author.id, *task)
             else:
@@ -854,8 +769,7 @@ class AudioAPIInterface:
                 ]:
                     valid_global_entry = True
                 if valid_global_entry:
-                    if IS_DEBUG:
-                        log.debug("Querying Global DB api for %r", query)
+                    log.trace("Querying Global DB api for %r", query)
                     results, called_api = results, False
         if valid_global_entry:
             pass
@@ -873,8 +787,7 @@ class AudioAPIInterface:
                 results, called_api = await self.fetch_track(ctx, player, query, forced=True)
             valid_global_entry = False
         else:
-            if IS_DEBUG:
-                log.debug("Querying Lavalink api for %r", query_string)
+            log.trace("Querying Lavalink api for %r", query_string)
             called_api = True
             try:
                 results = await player._ll_player.load_tracks(query_string)
@@ -924,11 +837,10 @@ class AudioAPIInterface:
                     )
                     audio._api_interface._append_task(ctx.author.id, *task)
             except Exception as exc:
-                debug_exc_log(
-                    log,
-                    exc,
+                log.verbose(
                     "Failed to enqueue write task for %r to Lavalink table",
                     query_string,
+                    exc_info=exc,
                 )
         return results, called_api
 
@@ -952,7 +864,7 @@ class AudioAPIInterface:
                 )
                 tracks = playlist.tracks_obj
             except Exception as exc:
-                debug_exc_log(log, exc, "Failed to fetch playlist for autoplay")
+                log.verbose("Failed to fetch playlist for autoplay", exc_info=exc)
 
         if not tracks or not getattr(playlist, "tracks", None):
             if cache_enabled:
@@ -991,10 +903,9 @@ class AudioAPIInterface:
                     f"{track.title} {track.author} {track.uri} {query}",
                     query_obj=query,
                 ):
-                    if IS_DEBUG:
-                        log.debug(
-                            "Query is not allowed in %r (%d)", player.guild.name, player.guild.id
-                        )
+                    log.debug(
+                        "Query is not allowed in %r (%d)", player.guild.name, player.guild.id
+                    )
                     continue
                 valid = True
             track.extras.update(

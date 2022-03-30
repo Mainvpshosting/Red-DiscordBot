@@ -1,27 +1,29 @@
 import contextlib
-import logging
 import math
 from pathlib import Path
 from typing import MutableMapping
 
 import discord
+from red_commons.logging import getLogger
 
 from redbot.core import commands
 from redbot.core.i18n import Translator
+from redbot.core.utils._internal_utils import bot_can_react
 from redbot.core.utils.menus import DEFAULT_CONTROLS, close_menu, menu, next_page, prev_page
 
 from ...audio_dataclasses import LocalPath, Query
 from ..abc import MixinMeta
 from ..cog_utils import CompositeMetaClass
 
-log = logging.getLogger("red.cogs.Audio.cog.Commands.local_track")
+log = getLogger("red.cogs.Audio.cog.Commands.local_track")
 _ = Translator("Audio", Path(__file__))
 
 
 class LocalTrackCommands(MixinMeta, metaclass=CompositeMetaClass):
     @commands.group(name="local")
     @commands.guild_only()
-    @commands.bot_has_permissions(embed_links=True, add_reactions=True)
+    @commands.bot_has_permissions(embed_links=True)
+    @bot_can_react()
     async def command_local(self, ctx: commands.Context):
         """Local playback commands."""
 
