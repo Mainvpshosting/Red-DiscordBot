@@ -706,7 +706,7 @@ class Player:
             raise InvalidQuery(f"No results found for {query}")
 
         try:
-            result, called_api = await self._api_interface.fetch_track(self._guild.id, self, query)
+            result, called_api = await self._api_interface.fetch_track(self._guild.id, self._player, query)
         except KeyError:
             raise NoMatchesFound("No matches could be found for the given query")
 
