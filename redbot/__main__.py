@@ -439,6 +439,7 @@ def handle_early_exit_flags(cli_flags: Namespace):
 
 async def shutdown_handler(red, signal_type=None, exit_code=None):
     if signal_type:
+        await audio.shutdown("", 1, force_shutdown=True)
         log.info("%s received. Quitting...", signal_type)
         # Do not collapse the below line into other logic
         # We need to renter this function

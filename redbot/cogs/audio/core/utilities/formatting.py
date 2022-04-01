@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import List, Optional
 
 import discord
-import lavalink
 from red_commons.logging import getLogger
 
-from redbot.core import commands
+from redbot.core import commands, audio
 from redbot.core.i18n import Translator
 from redbot.core.utils import AsyncIter
 from redbot.core.utils.chat_formatting import box, escape

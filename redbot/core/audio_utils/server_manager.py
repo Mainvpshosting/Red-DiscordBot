@@ -2,7 +2,6 @@ import asyncio
 import asyncio.subprocess
 import itertools
 import json
-import logging
 import pathlib
 import platform
 import re
@@ -14,13 +13,14 @@ import rich
 import sys
 
 from typing import Optional, Final, Pattern, List, Tuple
+from red_commons.logging import getLogger
 
 from .api_utils import task_callback
 from .errors import LavalinkDownloadFailed, PortAlreadyInUse
 
 from redbot.core import data_manager
 
-log = logging.getLogger("red.core.audio.server_manager")
+log = getLogger("red.core.audio.server_manager")
 
 JAR_VERSION: Final[str] = "3.3.2.3"
 JAR_BUILD: Final[int] = 1239

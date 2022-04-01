@@ -1962,6 +1962,8 @@ class Red(
 
     async def close(self):
         """Logs out of Discord and closes all connections."""
+        await audio.shutdown("", 1, force_shutdown=True)
+
         await super().close()
         await drivers.get_driver_class().teardown()
         try:
@@ -1969,8 +1971,6 @@ class Red(
                 await self.rpc.close()
         except AttributeError:
             pass
-
-        await audio.shutdown("", 1, force_shutdown=True)
 
     async def shutdown(self, *, restart: bool = False):
         """Gracefully quit Red.
