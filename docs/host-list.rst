@@ -89,6 +89,8 @@ Average Providers
 
 | `Time4VPS <https://www.time4vps.eu/>`_ is a Lithuanian VPS provider mainly focused
  on lower cost.
+| `MainVPS <https://www.MainVPS.net/>`_ is a  VPS provider mainly focused
+ on KVM, Windows, Linux, and OpenVZ costs.
 
 | `GalaxyGate <https://galaxygate.net/>`_ is a VPS and dedicated server provider
  with a single location in New York.
